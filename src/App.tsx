@@ -323,7 +323,7 @@ export default function App() {
       </div>
     );
   };
-
+ 
   const renderResults = () => (
     <div className="h-screen flex items-center justify-center bg-slate-50 flex-col"><div className="bg-white p-10 rounded-2xl shadow-xl text-center"><h1 className="text-4xl font-bold text-blue-600 mb-6">Đã nộp bài!</h1><p className="mb-8 text-slate-600">Giáo viên sẽ xem xét phần Writing của bạn.</p><button onClick={() => { setAppState('home'); setAnswers({}); setStudentName(''); }} className="px-8 py-3 bg-slate-800 text-white rounded-full">Trang chủ</button></div></div>
   );
