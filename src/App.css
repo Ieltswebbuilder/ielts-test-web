@@ -1,0 +1,833 @@
+"use client";
+import React, { useState, useEffect, useRef } from 'react';
+
+const ClockIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+const CheckIcon = () => <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>;
+const XIcon = () => <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>;
+const PlayIcon = () => <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>;
+const PauseIcon = () => <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>;
+const UploadIcon = () => <svg className="w-10 h-10 mb-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>;
+const SpinnerIcon = () => <svg className="animate-spin w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>;
+
+type QuestionType = 'multiple_choice' | 'fill_blank' | 'true_false_ng';
+
+interface Question {
+  id: string;
+  type: QuestionType;
+  text: string;
+  options?: string[];
+  answer: string;
+  explanation?: string;
+}
+
+interface Part {
+  id: string;
+  title: string;
+  content?: string; 
+  audioUrl?: string; 
+  transcript?: string;
+  questions: Question[];
+}
+
+interface Section {
+  title: string;
+  timeLimit: number; 
+  parts: Part[];
+}
+
+interface TestData {
+  id: string;
+  title: string;
+  sections: {
+    reading: Section;
+    listening: Section;
+    writing: Section;
+  };
+}
+
+interface Submission {
+  id: string;
+  studentName: string;
+  date: string;
+  scores: { listening: number, reading: number, writingMock: number, overall: string };
+  writingAnswers: { task1: string, task2: string };
+}
+
+const defaultTestData: TestData = {
+  id: "test-001",
+  title: "IELTS Placement Test - Mẫu",
+  sections: {
+    listening: {
+      title: "Listening Test", timeLimit: 1800,
+      parts: [
+        {
+          id: "L1", title: "Part 1: Hotel Booking", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+          questions: [
+            { id: "l_q1", type: "fill_blank", text: "Date of arrival: 15th of _______", answer: "May", explanation: "The guest clearly says '15th of May'." },
+            { id: "l_q2", type: "multiple_choice", text: "What type of room does the guest want?", options: ["Single", "Double", "Suite"], answer: "Double" }
+          ]
+        }
+      ]
+    },
+    reading: {
+      title: "Reading Test", timeLimit: 3600,
+      parts: [
+        {
+          id: "R1", title: "Passage 1: The History of Tea", content: "Tea is one of the most popular beverages in the world. It originated in China, where it was initially used for medicinal purposes...",
+          questions: [
+            { id: "r_q1", type: "true_false_ng", text: "Tea was originally used as a medicine in China.", options: ["True", "False", "Not Given"], answer: "True" },
+            { id: "r_q2", type: "fill_blank", text: "Tea was brought to Europe in the 16th century by _______ merchants.", answer: "Dutch" }
+          ]
+        }
+      ]
+    },
+    writing: {
+      title: "Writing Test", timeLimit: 3600,
+      parts: [
+        { id: "W1", title: "Task 1", content: "The chart below shows the number of men and women in further education...", questions: [{ id: "w_q1", type: "fill_blank", text: "Write your answer here:", answer: "" }] },
+        { id: "W2", title: "Task 2", content: "Some people think that all university students should study whatever they like...", questions: [{ id: "w_q2", type: "fill_blank", text: "Write your answer here:", answer: "" }] }
+      ]
+    }
+  }
+};
+
+const formatTime = (seconds: number) => {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+};
+
+const calculateBandScore = (rawScore: number, maxScore: number) => {
+  if (maxScore === 0) return 0;
+  const percentage = rawScore / maxScore;
+  if (percentage >= 0.9) return 9.0;
+  if (percentage >= 0.85) return 8.5;
+  if (percentage >= 0.77) return 8.0;
+  if (percentage >= 0.7) return 7.5;
+  if (percentage >= 0.6) return 7.0;
+  if (percentage >= 0.5) return 6.5;
+  if (percentage >= 0.4) return 6.0;
+  if (percentage >= 0.3) return 5.5;
+  if (percentage >= 0.2) return 5.0;
+  return 4.0; 
+};
+
+const loadScript = (src: string) => new Promise<void>((resolve, reject) => {
+  if (document.querySelector(`script[src="${src}"]`)) return resolve();
+  const script = document.createElement('script');
+  script.src = src;
+  script.onload = () => resolve();
+  script.onerror = reject;
+  document.head.appendChild(script);
+});
+
+const callGeminiForSection = async (documentText: string, sectionType: 'listening' | 'reading' | 'writing', retries = 5, delay = 1000): Promise<any> => {
+  const apiKey = ""; // Canvas environment auto-injects key if missing or proxies requests. In real world, use a backend.
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+  const prompt = `
+Bạn là một chuyên gia khảo thí IELTS. Hãy đọc nội dung đề thi lộn xộn dưới đây và CHỈ trích xuất dữ liệu cho phần thi: ${sectionType.toUpperCase()}.
+Yêu cầu bắt buộc:
+1. Nhận diện và chỉ lấy nội dung của phần ${sectionType.toUpperCase()}. Bỏ qua các phần khác.
+2. Cấu trúc JSON PHẢI TUÂN THỦ NGHIÊM NGẶT format sau:
+{
+  "title": "${sectionType.charAt(0).toUpperCase() + sectionType.slice(1)} Test",
+  "timeLimit": ${sectionType === 'listening' ? 1800 : 3600},
+  "parts": [
+    {
+      "id": "${sectionType.charAt(0)}_1",
+      "title": "Tên Part / Passage / Task",
+      "content": "Nội dung bài đọc hoặc đề bài. Dùng thẻ <br/> để xuống dòng. Nếu là Listening thì để rỗng.",
+      "audioUrl": "",
+      "questions": [
+        {
+          "id": "${sectionType.charAt(0)}_q1",
+          "type": "multiple_choice | fill_blank | true_false_ng",
+          "text": "Nội dung câu hỏi",
+          "options": ["A", "B", "C"],
+          "answer": "đáp án"
+        }
+      ]
+    }
+  ]
+}
+Lưu ý: Chỉ trả về JSON, không thêm bất kỳ văn bản nào khác.
+Đề thi gốc:
+---
+${documentText.substring(0, 30000)} 
+  `;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" }
+      })
+    });
+
+    if (!response.ok) throw new Error("API lỗi");
+    const data = await response.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!textResponse) throw new Error("Không nhận được kết quả từ AI");
+    
+    return JSON.parse(textResponse);
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise(res => setTimeout(res, delay));
+      return callGeminiForSection(documentText, sectionType, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+};
+
+const Timer = ({ timeLimit, onTimeUp }: { timeLimit: number, onTimeUp: () => void }) => {
+  const [timeLeft, setTimeLeft] = useState(timeLimit);
+
+  useEffect(() => { setTimeLeft(timeLimit); }, [timeLimit]);
+
+  useEffect(() => {
+    if (timeLeft <= 0) { onTimeUp(); return; }
+    const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft, onTimeUp]);
+
+  return (
+    <div className={`flex items-center gap-2 font-mono text-xl font-bold ${timeLeft < 300 ? 'text-red-600' : 'text-slate-700'}`}>
+      <ClockIcon /> {formatTime(timeLeft)}
+    </div>
+  );
+};
+
+const AudioPlayer = ({ url }: { url: string }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) audioRef.current.pause(); else audioRef.current.play();
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  return (
+    <div className="bg-slate-100 p-4 rounded-xl flex items-center gap-4 mb-6 border border-slate-200">
+      <button onClick={togglePlay} className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition">
+        {isPlaying ? <PauseIcon /> : <PlayIcon />}
+      </button>
+      <div className="flex-1 bg-gray-300 h-2 rounded-full overflow-hidden">
+        <div className="bg-blue-600 h-full" style={{ width: `${progress}%` }}></div>
+      </div>
+      <audio 
+        ref={audioRef} 
+        src={url || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"} 
+        onTimeUpdate={() => audioRef.current && setProgress((audioRef.current.currentTime / audioRef.current.duration) * 100)} 
+        onEnded={() => setIsPlaying(false)} 
+      />
+    </div>
+  );
+};
+
+const QuestionInput = ({ question, value, onChange, isReview, isCorrect }: any) => {
+  const renderInput = () => {
+    switch (question.type) {
+      case 'multiple_choice':
+      case 'true_false_ng':
+        return (
+          <div className="flex flex-col gap-2 mt-2">
+            {question.options?.map((opt: string) => (
+              <label key={opt} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors
+                ${value === opt ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}
+                ${isReview && value === opt && !isCorrect ? 'border-red-500 bg-red-50' : ''}
+                ${isReview && opt === question.answer ? 'border-green-500 bg-green-50 font-medium' : ''}
+              `}>
+                <input type="radio" name={question.id} value={opt} checked={value === opt} onChange={(e) => onChange(question.id, e.target.value)} disabled={isReview} className="w-4 h-4 text-blue-600" />
+                {opt}
+              </label>
+            ))}
+          </div>
+        );
+      case 'fill_blank':
+        if (question.id.startsWith('w_')) {
+          const wordCount = value ? value.trim().split(/\s+/).length : 0;
+          return (
+            <div className="mt-2">
+              <textarea className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none leading-relaxed" placeholder="Gõ bài viết của bạn tại đây..." value={value || ''} onChange={(e) => onChange(question.id, e.target.value)} disabled={isReview} />
+              <div className="text-right text-sm text-gray-500 mt-1">Số từ: <span className="font-bold">{wordCount}</span></div>
+            </div>
+          )
+        }
+        return (
+          <input type="text" className={`mt-2 w-full max-w-sm p-2 border rounded-md focus:ring-2 outline-none ${isReview ? (isCorrect ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50') : 'border-gray-300 focus:ring-blue-500'}`} value={value || ''} onChange={(e) => onChange(question.id, e.target.value)} disabled={isReview} placeholder="Nhập đáp án..." />
+        );
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+      <div className="flex gap-3">
+        {!question.id.startsWith('w_') && <span className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full font-bold text-slate-700">{question.id.replace(/[^0-9]/g, '') || '?'}</span>}
+        <div className="flex-1">
+          <p className="font-medium text-slate-800 text-lg">{question.text}</p>
+          {renderInput()}
+          {isReview && !question.id.startsWith('w_') && (
+             <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200 text-sm">
+                <div className="flex items-center gap-2 mb-1">
+                  {isCorrect ? <CheckIcon/> : <XIcon/>}
+                  <span className="font-bold">Đáp án đúng: {question.answer}</span>
+                </div>
+                {question.explanation && <p className="text-slate-600 mt-2"><strong>Giải thích:</strong> {question.explanation}</p>}
+             </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  const [appState, setAppState] = useState<'home' | 'test' | 'results' | 'admin'>('home');
+  const [currentSection, setCurrentSection] = useState<'listening' | 'reading' | 'writing'>('listening');
+  const [testData, setTestData] = useState<TestData>(defaultTestData);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  
+  const [adminMode, setAdminMode] = useState<'ai' | 'json' | 'submissions'>('ai');
+  const [adminJsonInput, setAdminJsonInput] = useState(JSON.stringify(testData, null, 2));
+  const [processingSection, setProcessingSection] = useState<'listening' | 'reading' | 'writing' | null>(null);
+  const [uploadStatus, setUploadStatus] = useState('');
+
+  const [studentName, setStudentName] = useState('');
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('ielts_draft_answers');
+    if (saved) try { setAnswers(JSON.parse(saved)); } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    if (appState === 'test') localStorage.setItem('ielts_draft_answers', JSON.stringify(answers));
+    if (appState === 'admin') setAdminJsonInput(JSON.stringify(testData, null, 2));
+  }, [answers, appState, testData]);
+
+  const handleAnswerChange = (qId: string, value: string) => setAnswers(prev => ({ ...prev, [qId]: value }));
+
+  const handleNextSection = () => {
+    if (currentSection === 'listening') setCurrentSection('reading');
+    else if (currentSection === 'reading') setCurrentSection('writing');
+    else setShowSubmitModal(true);
+  };
+
+  const submitTest = () => {
+    let rCorrect = 0, rTotal = 0, lCorrect = 0, lTotal = 0;
+    
+    const evaluateObj = (section: Section, type: 'r' | 'l') => {
+      if(!section || !section.parts) return;
+      section.parts.forEach(part => {
+        if(!part.questions) return;
+        part.questions.forEach(q => {
+          if (type === 'r') rTotal++; else lTotal++;
+          const userAns = (answers[q.id] || '').trim().toLowerCase();
+          const correctAns = (q.answer || '').trim().toLowerCase();
+          if (userAns === correctAns && correctAns !== '') {
+            if (type === 'r') rCorrect++; else lCorrect++;
+          }
+        });
+      });
+    };
+    evaluateObj(testData.sections.reading, 'r');
+    evaluateObj(testData.sections.listening, 'l');
+
+    const rBand = calculateBandScore(rCorrect, rTotal);
+    const lBand = calculateBandScore(lCorrect, lTotal);
+
+    const w1Words = (answers['w_q1'] || '').trim().split(/\s+/).filter(w=>w.length>0).length;
+    const w2Words = (answers['w_q2'] || '').trim().split(/\s+/).filter(w=>w.length>0).length;
+    
+    let wBand = 6.0; 
+    if (w1Words === 0 && w2Words === 0) wBand = 0;
+    else if (w1Words > 150 && w2Words > 250) wBand = 6.5; 
+
+    const overall = ((rBand + lBand + wBand) / 3).toFixed(1);
+
+    const newSubmission: Submission = {
+      id: Date.now().toString(),
+      studentName: studentName || 'Học viên ẩn danh',
+      date: new Date().toLocaleString('vi-VN'),
+      scores: { listening: lBand, reading: rBand, writingMock: wBand, overall },
+      writingAnswers: { 
+        task1: answers['w_q1'] || 'Học viên không viết gì ở Task 1', 
+        task2: answers['w_q2'] || 'Học viên không viết gì ở Task 2' 
+      }
+    };
+
+    const existingSubmissions = JSON.parse(localStorage.getItem('ielts_submissions') || '[]');
+    localStorage.setItem('ielts_submissions', JSON.stringify([newSubmission, ...existingSubmissions]));
+
+    setShowSubmitModal(false);
+    setAppState('results');
+    localStorage.removeItem('ielts_draft_answers');
+  };
+
+  const extractTextFromFile = async (file: File): Promise<string> => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    
+    if (extension === 'txt') {
+      return await file.text();
+    } 
+    else if (extension === 'pdf') {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let text = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map((item: any) => item.str).join(' ') + '\n';
+      }
+      return text;
+    } 
+    else if (extension === 'docx' || extension === 'doc') {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await (window as any).mammoth.extractRawText({ arrayBuffer });
+      return result.value;
+    }
+    throw new Error('Định dạng file không hỗ trợ. Vui lòng chọn .pdf, .docx, hoặc .txt');
+  };
+
+  const handleSmartFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, section: 'listening' | 'reading' | 'writing') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setProcessingSection(section);
+    try {
+      const rawText = await extractTextFromFile(file);
+      if (!rawText || rawText.trim().length === 0) throw new Error("Không tìm thấy chữ trong file.");
+
+      setUploadStatus(`AI đang đọc phần ${section.toUpperCase()}...`);
+      const generatedSection = await callGeminiForSection(rawText, section);
+
+      setTestData(prev => {
+        const newData = { ...prev };
+        newData.sections[section] = generatedSection;
+        setAdminJsonInput(JSON.stringify(newData, null, 2));
+        return newData;
+      });
+      
+      alert(`Đã nạp thành công phần thi: ${section.toUpperCase()}!`);
+    } catch (error: any) {
+      alert("Lỗi khi xử lý file: " + error.message);
+    } finally {
+      setProcessingSection(null);
+      setUploadStatus('');
+      e.target.value = ''; 
+    }
+  };
+
+  const renderHome = () => (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+      <div className="max-w-2xl w-full bg-white p-10 rounded-3xl shadow-xl border border-slate-100 text-center relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-purple-500"></div>
+        <h1 className="text-4xl font-extrabold text-slate-800 mb-4">{testData.title}</h1>
+        <p className="text-slate-600 mb-8 text-lg">Hệ thống test IELTS tự động chấm điểm.</p>
+        
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+            <h3 className="font-bold text-blue-800">Listening</h3>
+            <p className="text-blue-600 text-sm">{testData.sections.listening?.parts?.length || 0} Parts</p>
+          </div>
+          <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+            <h3 className="font-bold text-emerald-800">Reading</h3>
+            <p className="text-emerald-600 text-sm">{testData.sections.reading?.parts?.length || 0} Passages</p>
+          </div>
+          <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+            <h3 className="font-bold text-purple-800">Writing</h3>
+            <p className="text-purple-600 text-sm">{testData.sections.writing?.parts?.length || 0} Tasks</p>
+          </div>
+        </div>
+
+        <div className="mb-8 max-w-sm mx-auto">
+          <input 
+            type="text" 
+            placeholder="Nhập Tên của bạn để bắt đầu..." 
+            value={studentName}
+            onChange={(e) => setStudentName(e.target.value)}
+            className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:border-blue-600 outline-none text-center font-bold text-slate-700 shadow-sm transition"
+          />
+        </div>
+
+        <div className="flex flex-col gap-4 items-center">
+          <button 
+            onClick={() => {
+              if(!studentName.trim()) { alert('Vui lòng nhập tên của bạn trước khi làm bài nhé!'); return; }
+              setAppState('test');
+            }} 
+            className="w-full max-w-sm py-4 bg-blue-600 text-white text-lg font-bold rounded-full hover:bg-blue-700 hover:shadow-lg transition"
+          >
+            Bắt đầu làm bài
+          </button>
+          <button onClick={() => {
+            const saved = localStorage.getItem('ielts_submissions');
+            if(saved) setSubmissions(JSON.parse(saved));
+            setAppState('admin');
+          }} className="text-slate-500 text-sm font-medium hover:text-slate-800 underline mt-2">
+            👨‍🏫 Dành cho Giáo viên: Tải đề thi / Xem bài làm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAdmin = () => (
+    <div className="min-h-screen bg-slate-50 p-8">
+      <div className="max-w-6xl mx-auto bg-white p-8 rounded-2xl shadow-md border border-slate-100">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-3xl font-extrabold text-slate-800">Quản trị Đề Thi</h2>
+          <button onClick={() => setAppState('home')} className="px-5 py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200">← Về trang chủ</button>
+        </div>
+        
+        <div className="flex border-b mb-6 border-slate-200">
+          <button onClick={() => setAdminMode('ai')} className={`px-6 py-3 font-bold text-sm transition-all ${adminMode === 'ai' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}>
+            ✨ Tự động tạo bằng AI (Word/PDF)
+          </button>
+          <button onClick={() => setAdminMode('json')} className={`px-6 py-3 font-bold text-sm transition-all ${adminMode === 'json' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}>
+            🛠 Chỉnh sửa thủ công (JSON)
+          </button>
+          <button onClick={() => {
+            const saved = localStorage.getItem('ielts_submissions');
+            if(saved) setSubmissions(JSON.parse(saved));
+            setAdminMode('submissions');
+          }} className={`px-6 py-3 font-bold text-sm transition-all ${adminMode === 'submissions' ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}>
+            📁 Bài làm học viên
+          </button>
+        </div>
+
+        {adminMode === 'submissions' && (
+          <div className="animate-fade-in">
+            <h3 className="text-xl font-bold mb-4 text-slate-800">Danh sách bài nộp</h3>
+            {submissions.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200">Chưa có học viên nào nộp bài.</div>
+            ) : (
+              <div className="flex gap-6 h-[600px]">
+                <div className="w-1/3 bg-slate-50 border border-slate-200 rounded-xl overflow-hidden overflow-y-auto custom-scrollbar">
+                  {submissions.map(sub => (
+                    <div key={sub.id} onClick={() => setSelectedSubmission(sub)} className={`p-4 border-b border-slate-200 cursor-pointer hover:bg-white transition ${selectedSubmission?.id === sub.id ? 'bg-white border-l-4 border-l-blue-600' : ''}`}>
+                      <div className="font-bold text-slate-800 text-lg">{sub.studentName}</div>
+                      <div className="text-xs text-slate-500 mt-1">Nộp lúc: {sub.date}</div>
+                      <div className="text-sm font-medium text-blue-600 mt-2">Điểm tổng (Overall): {sub.scores.overall}</div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="w-2/3 bg-white border border-slate-200 rounded-xl p-6 overflow-y-auto custom-scrollbar">
+                  {selectedSubmission ? (
+                    <div>
+                      <div className="flex justify-between items-start mb-6 border-b pb-4">
+                        <div>
+                          <h4 className="text-2xl font-bold text-slate-800">{selectedSubmission.studentName}</h4>
+                          <p className="text-slate-500 text-sm mt-1">{selectedSubmission.date}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="bg-blue-50 px-3 py-1 rounded text-blue-800 font-bold text-sm">L: {selectedSubmission.scores.listening}</div>
+                          <div className="bg-emerald-50 px-3 py-1 rounded text-emerald-800 font-bold text-sm">R: {selectedSubmission.scores.reading}</div>
+                          <div className="bg-purple-50 px-3 py-1 rounded text-purple-800 font-bold text-sm">W: {selectedSubmission.scores.writingMock}</div>
+                        </div>
+                      </div>
+
+                      <div className="mb-8">
+                        <h5 className="font-bold text-lg text-slate-700 mb-3 flex justify-between"><span>Writing Task 1</span><span className="text-sm font-normal bg-slate-100 px-2 py-1 rounded text-slate-500">{selectedSubmission.writingAnswers.task1.split(/\s+/).length} chữ</span></h5>
+                        <div className="bg-amber-50/50 p-5 rounded-xl whitespace-pre-wrap text-slate-800 leading-relaxed border border-amber-100 font-medium">{selectedSubmission.writingAnswers.task1}</div>
+                      </div>
+                      
+                      <div>
+                        <h5 className="font-bold text-lg text-slate-700 mb-3 flex justify-between"><span>Writing Task 2</span><span className="text-sm font-normal bg-slate-100 px-2 py-1 rounded text-slate-500">{selectedSubmission.writingAnswers.task2.split(/\s+/).length} chữ</span></h5>
+                        <div className="bg-amber-50/50 p-5 rounded-xl whitespace-pre-wrap text-slate-800 leading-relaxed border border-amber-100 font-medium">{selectedSubmission.writingAnswers.task2}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-slate-400 text-center px-10">Bấm vào tên học viên ở cột bên trái để xem chi tiết.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {adminMode === 'ai' && (
+          <div>
+            <p className="text-slate-600 mb-6">Hãy tải file đề bài (kèm đáp án nếu có) vào đúng kỹ năng tương ứng.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {(['listening', 'reading', 'writing'] as const).map(section => (
+                <div key={section} className="border-2 border-dashed border-slate-300 rounded-2xl p-6 bg-slate-50 hover:bg-slate-100 transition relative flex flex-col items-center text-center">
+                  {processingSection === section ? (
+                    <div className="flex flex-col items-center py-8">
+                      <SpinnerIcon />
+                      <p className="mt-4 text-sm font-bold text-slate-700">{uploadStatus}</p>
+                    </div>
+                  ) : (
+                    <div className="py-8 w-full flex flex-col items-center">
+                      <UploadIcon />
+                      <h3 className="font-bold text-lg text-slate-800 capitalize mb-2">{section}</h3>
+                      <p className="text-xs text-slate-500 mb-4 px-2">Hỗ trợ .PDF, .DOCX</p>
+                      <button className="px-4 py-2 bg-white border border-slate-300 rounded text-sm font-semibold text-blue-600 shadow-sm pointer-events-none">
+                        Chọn file đề {section}
+                      </button>
+                      <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={(e) => handleSmartFileUpload(e, section)} disabled={processingSection !== null} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    </div>
+                  )}
+                  {(testData.sections as any)[section]?.parts?.length > 0 && processingSection !== section && (
+                    <div className="absolute top-3 right-3 bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-bold">✓ Đã có dữ liệu</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {adminMode === 'json' && (
+          <div className="animate-fade-in">
+            <p className="text-sm text-slate-500 mb-4">Mã JSON của đề thi hiện tại.</p>
+            <textarea className="w-full h-[500px] font-mono text-sm p-5 bg-slate-900 text-green-400 rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500" value={adminJsonInput} onChange={(e) => setAdminJsonInput(e.target.value)} />
+            <div className="flex gap-4">
+              <button onClick={() => {
+                  try {
+                    setTestData(JSON.parse(adminJsonInput));
+                    alert("Lưu cập nhật đề thi thành công!");
+                    setAppState('home');
+                  } catch(e) { alert("Cú pháp JSON bị sai!"); }
+                }} className="px-8 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow">
+                Lưu Đề Thi
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderTest = () => {
+    const sectionData = (testData.sections as any)[currentSection];
+    if (!sectionData || !sectionData.parts) return <div className="p-10 text-center">Đề thi bị lỗi cấu trúc kỹ năng này.</div>;
+
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col h-screen overflow-hidden">
+        <header className="bg-white shadow-sm z-10 px-6 py-3 flex justify-between items-center shrink-0">
+          <div className="flex gap-2">
+            {['listening', 'reading', 'writing'].map(sec => (
+              <div key={sec} className={`px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider ${(testData.sections as any)[sec]?.parts?.length === 0 ? 'opacity-30' : ''} ${currentSection === sec ? 'bg-blue-100 text-blue-700' : 'text-slate-400'}`}>
+                {sec}
+              </div>
+            ))}
+          </div>
+          <Timer timeLimit={sectionData.timeLimit || 3600} onTimeUp={handleNextSection} />
+          <button onClick={() => setShowSubmitModal(true)} className="px-5 py-2 bg-slate-800 text-white text-sm font-bold rounded">Nộp Bài Ngay</button>
+        </header>
+
+        <div className="flex-1 overflow-hidden flex">
+          {currentSection === 'reading' ? (
+            <>
+              <div className="w-1/2 h-full overflow-y-auto bg-white p-8 border-r custom-scrollbar">
+                {sectionData.parts.map((part: Part) => (
+                  <div key={part.id} className="mb-10">
+                    <h2 className="text-2xl font-bold mb-6">{part.title}</h2>
+                    <div className="bg-yellow-50 text-yellow-800 text-xs p-2 rounded mb-4 inline-block">💡 Bôi đen chữ để highlight</div>
+                    <div className="prose max-w-none text-slate-700 leading-loose selection:bg-yellow-300 selection:text-black" dangerouslySetInnerHTML={{ __html: part.content || '' }} />
+                  </div>
+                ))}
+              </div>
+              <div className="w-1/2 h-full overflow-y-auto bg-slate-50 p-8 custom-scrollbar">
+                {sectionData.parts.map((part: Part) => (
+                  <div key={part.id}>
+                    <h3 className="text-xl font-bold mb-4 text-slate-700 border-b pb-2">Câu hỏi</h3>
+                    {part.questions?.map(q => ( <QuestionInput key={q.id} question={q} value={answers[q.id]} onChange={handleAnswerChange} isReview={false} /> ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="max-w-4xl mx-auto w-full h-full overflow-y-auto p-8 custom-scrollbar">
+              {sectionData.parts.map((part: Part) => (
+                <div key={part.id} className="mb-12 bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+                  <h2 className="text-2xl font-bold mb-6 text-slate-800">{part.title}</h2>
+                  {part.audioUrl && <AudioPlayer url={part.audioUrl} />}
+                  {part.content && <div className="prose max-w-none text-slate-700 leading-relaxed mb-8 bg-slate-50 p-6 rounded-xl border border-slate-200 whitespace-pre-wrap">{part.content}</div>}
+                  <div className="space-y-6">
+                    {part.questions?.map(q => ( <QuestionInput key={q.id} question={q} value={answers[q.id]} onChange={handleAnswerChange} isReview={false} /> ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <footer className="bg-white border-t p-4 flex justify-between shrink-0 px-8">
+          <p className="text-sm text-slate-500">Tiến độ được lưu tự động.</p>
+          <button onClick={handleNextSection} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2">Chuyển phần tiếp theo →</button>
+        </footer>
+
+        {showSubmitModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-2xl max-w-md w-full text-center">
+              <h3 className="text-2xl font-bold mb-4">Nộp bài ngay?</h3>
+              <p className="text-slate-600 mb-8">Bạn có chắc chắn muốn nộp toàn bộ bài làm? Hành động này không thể hoàn tác.</p>
+              <div className="flex gap-4 justify-center">
+                <button onClick={() => setShowSubmitModal(false)} className="px-6 py-2 bg-slate-200 font-bold rounded-lg hover:bg-slate-300">Hủy</button>
+                <button onClick={submitTest} className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">Đồng ý nộp bài</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderResults = () => {
+    let rCorrect = 0, rTotal = 0, lCorrect = 0, lTotal = 0;
+    
+    const evaluateObj = (section: Section, type: 'r' | 'l') => {
+      if(!section || !section.parts) return;
+      section.parts.forEach(part => {
+        if(!part.questions) return;
+        part.questions.forEach(q => {
+          if (type === 'r') rTotal++; else lTotal++;
+          const userAns = (answers[q.id] || '').trim().toLowerCase();
+          const correctAns = (q.answer || '').trim().toLowerCase();
+          if (userAns === correctAns && correctAns !== '') {
+            if (type === 'r') rCorrect++; else lCorrect++;
+          }
+        });
+      });
+    };
+    evaluateObj(testData.sections.reading, 'r');
+    evaluateObj(testData.sections.listening, 'l');
+
+    const rBand = calculateBandScore(rCorrect, rTotal);
+    const lBand = calculateBandScore(lCorrect, lTotal);
+
+    const w1Words = (answers['w_q1'] || '').trim().split(/\s+/).filter(w=>w.length>0).length;
+    const w2Words = (answers['w_q2'] || '').trim().split(/\s+/).filter(w=>w.length>0).length;
+    
+    let wBand = 6.0; 
+    let wFeedback = [];
+    if (w1Words < 150) wFeedback.push("Task 1: Dưới số từ quy định (150 từ).");
+    else wFeedback.push("Task 1: Đạt yêu cầu về số từ.");
+    
+    if (w2Words < 250) wFeedback.push("Task 2: Dưới số từ quy định (250 từ).");
+    else wFeedback.push("Task 2: Đạt yêu cầu về số từ.");
+
+    if (w1Words > 150 && w2Words > 250) wBand = 6.5; 
+    if (w1Words === 0 && w2Words === 0) wBand = 0;
+
+    const overall = ((rBand + lBand + wBand) / 3).toFixed(1);
+
+    return (
+      <div className="min-h-screen bg-slate-50 p-8 overflow-y-auto">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold text-slate-800">Kết quả bài kiểm tra</h1>
+            <button onClick={() => window.print()} className="px-4 py-2 bg-slate-800 text-white rounded font-bold">🖨 In kết quả (PDF)</button>
+          </div>
+
+          <div className="grid grid-cols-4 gap-6 mb-10">
+             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
+              <p className="text-slate-500 font-bold uppercase mb-2">Overall</p>
+              <p className="text-5xl font-extrabold text-blue-600">{overall}</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
+              <p className="text-slate-500 font-bold uppercase mb-2">Listening</p>
+              <p className="text-4xl font-extrabold text-slate-800">{lBand.toFixed(1)}</p>
+              <p className="text-sm text-green-500 mt-2 font-medium">{lCorrect}/{lTotal} đúng</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
+              <p className="text-slate-500 font-bold uppercase mb-2">Reading</p>
+              <p className="text-4xl font-extrabold text-slate-800">{rBand.toFixed(1)}</p>
+              <p className="text-sm text-green-500 mt-2 font-medium">{rCorrect}/{rTotal} đúng</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center relative group">
+              <p className="text-slate-500 font-bold uppercase mb-2">Writing (AI Mock)</p>
+              <p className="text-4xl font-extrabold text-slate-800">{wBand.toFixed(1)}</p>
+              <p className="text-sm text-yellow-500 mt-2 font-medium">Chấm theo độ dài</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+             <div className="border-b border-slate-100 p-6 bg-slate-50">
+               <h2 className="text-xl font-bold">Phân tích chi tiết</h2>
+             </div>
+             <div className="p-6">
+                {(testData.sections as any).listening?.parts?.length > 0 && (
+                  <>
+                    <h3 className="text-lg font-bold text-blue-800 mb-4 bg-blue-50 p-3 rounded">Listening Section</h3>
+                    {(testData.sections as any).listening.parts.map((part: Part) => (
+                      <div key={part.id} className="mb-6">
+                        {part.questions?.map(q => {
+                          const isCorrect = (answers[q.id] || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase();
+                          return <QuestionInput key={q.id} question={q} value={answers[q.id]} isReview={true} isCorrect={isCorrect} />
+                        })}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {(testData.sections as any).reading?.parts?.length > 0 && (
+                  <>
+                    <h3 className="text-lg font-bold text-emerald-800 mb-4 bg-emerald-50 p-3 rounded mt-10">Reading Section</h3>
+                    {(testData.sections as any).reading.parts.map((part: Part) => (
+                      <div key={part.id} className="mb-6">
+                        {part.questions?.map(q => {
+                          const isCorrect = (answers[q.id] || '').trim().toLowerCase() === (q.answer || '').trim().toLowerCase();
+                          return <QuestionInput key={q.id} question={q} value={answers[q.id]} isReview={true} isCorrect={isCorrect} />
+                        })}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {(testData.sections as any).writing?.parts?.length > 0 && (
+                  <>
+                    <h3 className="text-lg font-bold text-purple-800 mb-4 bg-purple-50 p-3 rounded mt-10">Writing Section</h3>
+                    <div className="mb-6 p-4 border border-purple-200 rounded-xl bg-white">
+                      <ul className="list-disc pl-5 space-y-2 text-slate-700">
+                        {wFeedback.map((fb, idx) => <li key={idx}>{fb}</li>)}
+                      </ul>
+                      <div className="mt-6 grid gap-6">
+                        <div>
+                           <h4 className="font-bold text-sm text-slate-500 mb-2">Bài làm Task 1 ({w1Words} words):</h4>
+                           <div className="p-4 bg-slate-50 rounded whitespace-pre-wrap text-sm border">{answers['w_q1'] || 'Không có nội dung'}</div>
+                        </div>
+                        <div>
+                           <h4 className="font-bold text-sm text-slate-500 mb-2">Bài làm Task 2 ({w2Words} words):</h4>
+                           <div className="p-4 bg-slate-50 rounded whitespace-pre-wrap text-sm border">{answers['w_q2'] || 'Không có nội dung'}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+             </div>
+          </div>
+
+          <div className="text-center mt-10">
+            <button onClick={() => { setAppState('home'); setAnswers({}); setStudentName(''); }} className="px-8 py-3 bg-slate-200 font-bold rounded-full hover:bg-slate-300">
+              Quay lại Trang chủ
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (appState === 'home') return renderHome();
+  if (appState === 'admin') return renderAdmin();
+  if (appState === 'test') return renderTest();
+  if (appState === 'results') return renderResults();
+
+  return null;
+}
