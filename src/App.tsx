@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// --- ICONS (Inline SVGs for portability) ---
 const ClockIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 const CheckIcon = () => <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>;
 const XIcon = () => <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>;
@@ -8,34 +9,137 @@ const PauseIcon = () => <svg className="w-6 h-6" fill="currentColor" viewBox="0 
 const UploadIcon = () => <svg className="w-10 h-10 mb-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>;
 const SpinnerIcon = () => <svg className="animate-spin w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>;
 
+// --- TYPES & INTERFACES ---
 type QuestionType = 'multiple_choice' | 'fill_blank' | 'true_false_ng';
-interface Question { id: string; type: QuestionType; text: string; options?: string[]; answer: string; explanation?: string; }
-interface Part { id: string; title: string; content?: string; audioUrl?: string; transcript?: string; questions: Question[]; }
-interface Section { title: string; timeLimit: number; parts: Part[]; }
-interface TestData { id: string; title: string; sections: { reading: Section; listening: Section; writing: Section; }; }
-interface Submission { id: string; studentName: string; date: string; scores: { listening: number, reading: number, writingMock: number, overall: string }; writingAnswers: { task1: string, task2: string }; }
 
-const defaultTestData: TestData = {
-  id: "test-001", title: "IELTS Placement Test",
+interface Question {
+  id: string;
+  type: QuestionType;
+  text: string;
+  options?: string[];
+  answer: string;
+  explanation?: string;
+}
+
+interface Part {
+  id: string;
+  title: string;
+  content?: string; 
+  audioUrl?: string; 
+  transcript?: string;
+  questions: Question[];
+}
+
+interface Section {
+  title: string;
+  timeLimit: number; 
+  parts: Part[];
+}
+
+interface TestData {
+  id: string;
+  title: string;
   sections: {
-    listening: { title: "Listening Test", timeLimit: 1800, parts: [{ id: "L1", title: "Part 1: Hotel Booking", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", questions: [{ id: "l_q1", type: "fill_blank", text: "Date of arrival: 15th of _______", answer: "May", explanation: "The guest clearly says '15th of May'." }, { id: "l_q2", type: "multiple_choice", text: "What type of room does the guest want?", options: ["Single", "Double", "Suite"], answer: "Double" }] }] },
-    reading: { title: "Reading Test", timeLimit: 3600, parts: [{ id: "R1", title: "Passage 1: The History of Tea", content: "Tea is one of the most popular beverages in the world. It originated in China, where it was initially used for medicinal purposes...", questions: [{ id: "r_q1", type: "true_false_ng", text: "Tea was originally used as a medicine in China.", options: ["True", "False", "Not Given"], answer: "True" }, { id: "r_q2", type: "fill_blank", text: "Tea was brought to Europe in the 16th century by _______ merchants.", answer: "Dutch" }] }] },
-    writing: { title: "Writing Test", timeLimit: 3600, parts: [{ id: "W1", title: "Task 1", content: "The chart below shows the number of men and women in further education...", questions: [{ id: "w_q1", type: "fill_blank", text: "Write your answer here:", answer: "" }] }, { id: "W2", title: "Task 2", content: "Some people think that all university students should study whatever they like...", questions: [{ id: "w_q2", type: "fill_blank", text: "Write your answer here:", answer: "" }] }] }
+    reading: Section;
+    listening: Section;
+    writing: Section;
+  };
+}
+
+interface Submission {
+  id: string;
+  studentName: string;
+  date: string;
+  scores: { listening: number, reading: number, writingMock: number, overall: string };
+  writingAnswers: { task1: string, task2: string };
+}
+
+// --- MOCK DATA ---
+const defaultTestData: TestData = {
+  id: "test-001",
+  title: "IELTS Placement Test",
+  sections: {
+    listening: {
+      title: "Listening Test", timeLimit: 1800,
+      parts: [
+        {
+          id: "L1", title: "Part 1: Hotel Booking", audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+          questions: [
+            { id: "l_q1", type: "fill_blank", text: "Date of arrival: 15th of _______", answer: "May", explanation: "The guest clearly says '15th of May'." },
+            { id: "l_q2", type: "multiple_choice", text: "What type of room does the guest want?", options: ["Single", "Double", "Suite"], answer: "Double" }
+          ]
+        }
+      ]
+    },
+    reading: {
+      title: "Reading Test", timeLimit: 3600,
+      parts: [
+        {
+          id: "R1", title: "Passage 1: The History of Tea", content: "Tea is one of the most popular beverages in the world. It originated in China, where it was initially used for medicinal purposes...",
+          questions: [
+            { id: "r_q1", type: "true_false_ng", text: "Tea was originally used as a medicine in China.", options: ["True", "False", "Not Given"], answer: "True" },
+            { id: "r_q2", type: "fill_blank", text: "Tea was brought to Europe in the 16th century by _______ merchants.", answer: "Dutch" }
+          ]
+        }
+      ]
+    },
+    writing: {
+      title: "Writing Test", timeLimit: 3600,
+      parts: [
+        { id: "W1", title: "Task 1", content: "The chart below shows the number of men and women in further education...", questions: [{ id: "w_q1", type: "fill_blank", text: "Write your answer here:", answer: "" }] },
+        { id: "W2", title: "Task 2", content: "Some people think that all university students should study whatever they like...", questions: [{ id: "w_q2", type: "fill_blank", text: "Write your answer here:", answer: "" }] }
+      ]
+    }
   }
 };
 
-const formatTime = (seconds: number) => { const m = Math.floor(seconds / 60).toString().padStart(2, '0'); const s = (seconds % 60).toString().padStart(2, '0'); return `${m}:${s}`; };
-const calculateBandScore = (rawScore: number, maxScore: number) => { if (maxScore === 0) return 0; const p = rawScore / maxScore; if (p >= 0.9) return 9.0; if (p >= 0.85) return 8.5; if (p >= 0.77) return 8.0; if (p >= 0.7) return 7.5; if (p >= 0.6) return 7.0; if (p >= 0.5) return 6.5; if (p >= 0.4) return 6.0; if (p >= 0.3) return 5.5; if (p >= 0.2) return 5.0; return 4.0; };
+// --- UTILITIES ---
+const formatTime = (seconds: number) => {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+};
 
-const loadScript = (src: string) => new Promise<void>((resolve, reject) => { if (document.querySelector(`script[src="${src}"]`)) return resolve(); const script = document.createElement('script'); script.src = src; script.onload = () => resolve(); script.onerror = reject; document.head.appendChild(script); });
+const calculateBandScore = (rawScore: number, maxScore: number) => {
+  if (maxScore === 0) return 0;
+  const p = rawScore / maxScore;
+  if (p >= 0.9) return 9.0;
+  if (p >= 0.85) return 8.5;
+  if (p >= 0.77) return 8.0;
+  if (p >= 0.7) return 7.5;
+  if (p >= 0.6) return 7.0;
+  if (p >= 0.5) return 6.5;
+  if (p >= 0.4) return 6.0;
+  if (p >= 0.3) return 5.5;
+  if (p >= 0.2) return 5.0;
+  return 4.0; 
+};
 
+// Hàm đọc file ngoài
+const loadScript = (src: string) => new Promise<void>((resolve, reject) => {
+  if (document.querySelector(`script[src="${src}"]`)) return resolve();
+  const script = document.createElement('script');
+  script.src = src;
+  script.onload = () => resolve();
+  script.onerror = reject;
+  document.head.appendChild(script);
+});
+
+// Hàm gọi AI
 const callGeminiForSection = async (documentText: string, sectionType: 'listening' | 'reading' | 'writing', retries = 5, delay = 1000): Promise<any> => {
-  const apiKey = ""; // DÁN API KEY VÀO GIỮA HAI DẤU NGOẶC KÉP NÀY NẾU MUỐN DÙNG AI (AIzaSy...)
+  const apiKey = ""; // API Key từ môi trường (Nếu cần tự điền, bạn dán Key vào giữa cặp ngoặc kép này)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-  const prompt = `Bạn là chuyên gia IELTS. Trích xuất ${sectionType.toUpperCase()} thành JSON format: {"title": "${sectionType} Test", "timeLimit": 3600, "parts": [{"id": "p1", "title": "Part 1", "content": "Nội dung...", "audioUrl": "", "questions": [{"id": "q1", "type": "multiple_choice | fill_blank | true_false_ng", "text": "Câu hỏi", "options": ["A", "B"], "answer": "Đáp án"}]}]}. Trả về JSON, không kèm chữ khác. Đề: ${documentText.substring(0, 30000)}`;
+
+  const prompt = `Bạn là chuyên gia IELTS. Trích xuất nội dung cho phần thi ${sectionType.toUpperCase()} thành định dạng JSON.
+Mẫu yêu cầu:
+{"title": "${sectionType} Test", "timeLimit": 3600, "parts": [{"id": "p1", "title": "Part 1", "content": "Nội dung...", "audioUrl": "", "questions": [{"id": "q1", "type": "multiple_choice | fill_blank | true_false_ng", "text": "Câu hỏi", "options": ["A", "B"], "answer": "Đáp án"}]}]}
+Trả về CHỈ JSON hợp lệ, không có chữ thừa. Dữ liệu đầu vào:
+${documentText.substring(0, 30000)}`;
+
   try {
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } }) });
-    if (!res.ok) throw new Error("API lỗi"); const data = await res.json();
+    if (!res.ok) throw new Error("API lỗi"); 
+    const data = await res.json();
     return JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
   } catch (err) {
     if (retries > 0) { await new Promise(r => setTimeout(r, delay)); return callGeminiForSection(documentText, sectionType, retries - 1, delay * 2); }
@@ -43,15 +147,22 @@ const callGeminiForSection = async (documentText: string, sectionType: 'listenin
   }
 };
 
+// --- UI COMPONENTS ---
 const Timer = ({ timeLimit, onTimeUp }: { timeLimit: number, onTimeUp: () => void }) => {
   const [timeLeft, setTimeLeft] = useState(timeLimit);
   useEffect(() => { setTimeLeft(timeLimit); }, [timeLimit]);
-  useEffect(() => { if (timeLeft <= 0) { onTimeUp(); return; } const t = setInterval(() => setTimeLeft(p => p - 1), 1000); return () => clearInterval(t); }, [timeLeft, onTimeUp]);
+  useEffect(() => {
+    if (timeLeft <= 0) { onTimeUp(); return; }
+    const t = setInterval(() => setTimeLeft(p => p - 1), 1000);
+    return () => clearInterval(t);
+  }, [timeLeft, onTimeUp]);
   return <div className={`flex items-center gap-2 font-mono text-xl font-bold ${timeLeft < 300 ? 'text-red-600' : 'text-slate-700'}`}><ClockIcon /> {formatTime(timeLeft)}</div>;
 };
 
 const AudioPlayer = ({ url }: { url: string }) => {
-  const audioRef = useRef<HTMLAudioElement>(null); const [isPlaying, setIsPlaying] = useState(false); const [progress, setProgress] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
   const togglePlay = () => { if (audioRef.current) { isPlaying ? audioRef.current.pause() : audioRef.current.play(); setIsPlaying(!isPlaying); } };
   return (
     <div className="bg-slate-100 p-4 rounded-xl flex items-center gap-4 mb-6 border border-slate-200">
@@ -79,6 +190,7 @@ const QuestionInput = ({ question, value, onChange, isReview, isCorrect }: any) 
   );
 };
 
+// --- MAIN APP ---
 export default function App() {
   const [appState, setAppState] = useState<'home' | 'test' | 'results' | 'admin'>('home');
   const [currentSection, setCurrentSection] = useState<'listening' | 'reading' | 'writing'>('listening');
@@ -93,7 +205,7 @@ export default function App() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
 
-  // Chỉ load dữ liệu 1 lần khi component mount, tránh lỗi crash do localStorage trên Vercel
+  // Chỉ lấy dữ liệu khi Component vừa mới Mount, tránh lỗi Render Loop trên Vercel
   useEffect(() => {
     try {
       const savedAns = localStorage.getItem('ielts_draft_answers');
@@ -104,12 +216,15 @@ export default function App() {
           setTestData(parsedData);
           setAdminJsonInput(JSON.stringify(parsedData, null, 2));
       }
-    } catch (e) { console.error("Lỗi đọc Storage:", e) }
+    } catch (e) {
+      console.error("Lỗi đọc Storage:", e);
+    }
   }, []);
 
   const handleAnswerChange = (qId: string, value: string) => {
       const newAnswers = { ...answers, [qId]: value };
       setAnswers(newAnswers);
+      // Lưu nhẹ vào Storage
       try { localStorage.setItem('ielts_draft_answers', JSON.stringify(newAnswers)); } catch(e){}
   };
 
@@ -135,6 +250,7 @@ export default function App() {
       scores: { listening: lBand, reading: rBand, writingMock: wBand, overall },
       writingAnswers: { task1: answers['w_q1'] || 'Không viết', task2: answers['w_q2'] || 'Không viết' }
     };
+
     try {
         const subs = JSON.parse(localStorage.getItem('ielts_submissions') || '[]');
         localStorage.setItem('ielts_submissions', JSON.stringify([newSub, ...subs]));
